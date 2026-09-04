@@ -1,6 +1,6 @@
 # 수업용 시뮬레이터
 
-- [KNN 설명 페이지](index.html)
+- [KNN 설명 페이지]([index.html](https://bluesquaredmood.github.io/sim/))
 - [KNN 시뮬레이터](bias.html)
 
 
