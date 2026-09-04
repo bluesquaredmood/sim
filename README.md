@@ -19,4 +19,4 @@ HTML이 사라진 게 아니라, 자기 주소에 그대로 있는데 대문이 
 ## 3) 수정했는데 그대로입니다.
 브라우저 캐시. Ctrl+Shift+R (Mac은 Cmd+Shift+R)
 ## 4) 한글이 깨집니다.
-HTML 첫머리에 <meta charset="utf-8">이 있는지 확인
+HTML 첫머리에 `<meta charset="utf-8">`이 있는지 확인
