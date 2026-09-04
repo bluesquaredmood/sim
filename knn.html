@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>이웃 몇 명에게 물어볼까 — K-NN의 k 실험기</title>
+<style>
+  :root{
+    --paper:#F1F3F5; --panel:#FFFFFF; --ink:#16202B; --ink-soft:#5B6875; --line:#DCE2E8;
+    --c1:#2F6FB0;      /* 클래스 A */
+    --c2:#C7562F;      /* 클래스 B */
+    --c1-bg:#DCE9F5;   /* 결정 영역 A */
+    --c2-bg:#F7E2D8;   /* 결정 영역 B */
+    --warn:#B3271E;
+  }
+  *{box-sizing:border-box} html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);line-height:1.65;
+    font-family:"Pretendard","Malgun Gothic","맑은 고딕",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:32px 24px 72px}
+  header{margin-bottom:26px}
+  h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0 0 8px}
+  .lede{font-size:16px;color:var(--ink-soft);max-width:62ch;margin:0}
+  .board{display:grid;grid-template-columns:290px 1fr;gap:20px;align-items:start}
+  @media (max-width:880px){.board{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px}
+  .ctl{margin-bottom:20px}.ctl:last-child{margin-bottom:0}
+  .ctl h3{font-size:14px;font-weight:700;margin:0 0 2px}
+  .ctl p{font-size:12.5px;color:var(--ink-soft);margin:0 0 10px}
+  .row{display:flex;align-items:center;gap:10px}
+  input[type=range]{flex:1;accent-color:var(--c1)}
+  select{flex:1;font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff}
+  .val{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px;min-width:44px;text-align:right}
+  button{font:inherit;font-weight:600;border-radius:7px;border:1px solid var(--ink);
+    background:var(--ink);color:#fff;padding:9px 14px;cursor:pointer}
+  button.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+  button:focus-visible{outline:3px solid #8FB6E0;outline-offset:2px}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  canvas{width:100%;height:auto;display:block;border-radius:8px;background:#fff}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0 0;font-size:13px;color:var(--ink-soft)}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+  .legend i.hollow{background:#fff;border:2px solid #97A4B0}
+  .scores{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+  .score{border:1px solid var(--line);border-radius:9px;padding:14px 16px;background:#fff}
+  .score .k{font-size:12.5px;color:var(--ink-soft);margin:0 0 4px}
+  .score .v{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1;margin:0}
+  .score .bar{height:5px;border-radius:3px;background:var(--line);margin-top:9px;overflow:hidden}
+  .score .bar span{display:block;height:100%}
+  #verdict{margin-top:18px;border:1px solid var(--line);background:#fff;border-radius:9px;padding:15px 18px;font-size:14.5px}
+  #verdict.over{border-color:#EBB9B4;background:#FDF3F2;color:#7E1D16}
+  #verdict.under{border-color:#D8CBA8;background:#FBF7EC;color:#6B5514}
+  #verdict.good{border-color:#B4D8C4;background:#F1F9F4;color:#14563A}
+  .steps{counter-reset:s;margin:34px 0 0;padding:0;list-style:none;
+    display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media (max-width:880px){.steps{grid-template-columns:1fr 1fr}}
+  .steps li{background:#fff;border:1px solid var(--line);border-radius:9px;padding:15px 16px}
+  .steps li::before{counter-increment:s;content:counter(s);display:inline-flex;align-items:center;
+    justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--ink);color:#fff;
+    font-size:12px;font-weight:700;margin-bottom:8px}
+  .steps h4{margin:0 0 4px;font-size:14px;font-weight:700}
+  .steps p{margin:0;font-size:12.5px;color:var(--ink-soft)}
+  .ask{margin-top:32px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:22px 24px}
+  .ask h2{font-size:19px;margin:0 0 14px;font-weight:800}
+  .ask ol{margin:0;padding-left:20px} .ask li{margin-bottom:9px;font-size:14.5px}
+  .ask li:last-child{margin-bottom:0}
+  .ask .hint{color:var(--ink-soft);font-size:13px}
+  footer{margin-top:32px;font-size:12.5px;color:var(--ink-soft)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>이웃 몇 명에게 물어볼까</h1>
+  <p class="lede">
+    새로운 점의 색을 맞히는 가장 단순한 방법은 가까운 이웃에게 물어보는 것입니다.
+    그런데 <b>몇 명에게</b> 물어야 할까요. 한 명만 믿으면 훈련 데이터는 전부 맞히지만 새 데이터에서 틀리고,
+    너무 많이 물으면 멀리 있는 이웃까지 끼어들어 모양 자체를 놓칩니다.
+  </p>
+</header>
+
+<div class="board">
+
+  <div class="panel">
+    <div class="ctl">
+      <h3>k — 물어볼 이웃 수</h3>
+      <p>홀수만 씁니다. 짝수면 동점이 납니다.</p>
+      <div class="row">
+        <input id="k" type="range" min="1" max="81" value="5" step="2">
+        <span class="val" id="kV">5</span>
+      </div>
+    </div>
+
+    <div class="ctl">
+      <h3>데이터 모양</h3>
+      <p>경계가 복잡할수록 k의 영향이 커집니다.</p>
+      <div class="row">
+        <select id="shape">
+          <option value="ring" selected>동심원</option>
+          <option value="blob">두 덩어리</option>
+          <option value="xor">네 덩어리</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="ctl">
+      <h3>겹침 정도</h3>
+      <p>두 색이 섞여 있는 정도</p>
+      <div class="row">
+        <input id="ov" type="range" min="0" max="40" value="20" step="2">
+        <span class="val" id="ovV">20</span>
+      </div>
+    </div>
+
+    <div class="ctl">
+      <h3>훈련 데이터 수</h3>
+      <p>모델이 기억하는 점의 개수</p>
+      <div class="row">
+        <input id="n" type="range" min="30" max="300" value="120" step="10">
+        <span class="val" id="nV">120</span>
+      </div>
+    </div>
+
+    <div class="ctl">
+      <h3 style="margin-bottom:8px">실행</h3>
+      <div class="btns">
+        <button id="regen">데이터 새로 뽑기</button>
+      </div>
+      <div class="btns" style="margin-top:8px">
+        <button id="k1" class="ghost">k = 1</button>
+        <button id="kbest" class="ghost">가장 좋은 k 찾기</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel" style="padding:14px">
+      <canvas id="cv" width="1160" height="700" aria-label="두 색으로 나뉜 점들과 모델이 그린 결정 경계"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--c1)"></i>클래스 A · 훈련</span>
+        <span><i style="background:var(--c2)"></i>클래스 B · 훈련</span>
+        <span><i class="hollow"></i>검증 데이터 (학습에 쓰지 않음)</span>
+        <span><i style="background:var(--c1-bg)"></i>모델이 A라고 판단하는 영역</span>
+      </div>
+    </div>
+
+    <div class="scores">
+      <div class="score">
+        <p class="k">훈련 정확도</p><p class="v" id="accTr">–</p>
+        <div class="bar"><span id="barTr" style="background:var(--c1);width:0"></span></div>
+      </div>
+      <div class="score">
+        <p class="k">검증 정확도</p><p class="v" id="accTe">–</p>
+        <div class="bar"><span id="barTe" style="background:var(--c2);width:0"></span></div>
+      </div>
+      <div class="score">
+        <p class="k">둘의 격차</p><p class="v" id="gap">–</p>
+        <div class="bar"><span id="barGap" style="background:var(--ink);width:0"></span></div>
+      </div>
+    </div>
+
+    <div id="verdict"></div>
+  </div>
+</div>
+
+<ol class="steps">
+  <li><h4>기억한다</h4><p>K-NN은 학습이랄 게 없습니다. 훈련 데이터를 그대로 저장할 뿐입니다.</p></li>
+  <li><h4>거리를 잰다</h4><p>새 점이 오면 저장된 모든 점까지의 거리를 잽니다.</p></li>
+  <li><h4>k명에게 묻는다</h4><p>가장 가까운 k개를 골라 다수결로 색을 정합니다.</p></li>
+  <li><h4>두 번 채점한다</h4><p>외운 데이터로 한 번, 처음 보는 데이터로 한 번. 이 둘의 차이가 과적합입니다.</p></li>
+</ol>
+
+<section class="ask">
+  <h2>수업에서 던질 질문</h2>
+  <ol>
+    <li><b>k = 1</b>로 두세요. 훈련 정확도가 얼마인가요? 왜 그 값이 나올 수밖에 없나요?
+      <span class="hint">가장 가까운 이웃은 자기 자신입니다.</span></li>
+    <li>k를 <b>81</b>까지 올려 보세요. 두 정확도가 어떻게 되나요? 경계 모양은요?
+      <span class="hint">동심원에서는 안쪽 원이 통째로 사라집니다.</span></li>
+    <li>훈련 정확도가 가장 높은 k와, 검증 정확도가 가장 높은 k가 <b>같은가요?</b>
+      다르다면 우리는 어느 쪽을 골라야 하나요?</li>
+    <li>데이터 모양을 <b>두 덩어리</b>로 바꾸고 다시 해 보세요.
+      k를 키워도 잘 버팁니다. 왜 동심원과 다를까요?
+      <span class="hint">좋은 k는 데이터 모양에 따라 달라진다는 뜻입니다.</span></li>
+  </ol>
+</section>
+
+<footer>
+  「소프트웨어와 생활」 Ⅳ단원 시뮬레이션 · 「인공지능 기초」 Ⅱ-1 지도학습·모델 성능 평가와 함께 쓸 수 있습니다.
+</footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const el = (id) => document.getElementById(id);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  const PAD = 40;                       // 캔버스 여백
+  const GRID = 88;                      // 결정 경계 격자 해상도
+  let train = [], test = [];
+
+  function gauss(mu, sd) {
+    let u = 0, v = 0;
+    while (u === 0) u = Math.random();
+    while (v === 0) v = Math.random();
+    return mu + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  /* ── 1. 데이터 만들기 ── */
+  function makeData(n, shape, ov) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      let x, y, c;
+      if (shape === "blob") {
+        const sd = 8 + ov * 0.9;
+        c = Math.random() < 0.5 ? 0 : 1;
+        x = gauss(c ? 66 : 34, sd); y = gauss(c ? 62 : 38, sd);
+      } else if (shape === "xor") {
+        const sd = 6 + ov * 0.55, q = Math.floor(Math.random() * 4);
+        x = gauss([28, 72, 28, 72][q], sd);
+        y = gauss([28, 28, 72, 72][q], sd);
+        c = [0, 1, 1, 0][q];
+      } else {                                    // ring
+        c = Math.random() < 0.5 ? 0 : 1;
+        const r = (c ? 34 : 13) + gauss(0, 3 + ov * 0.28);
+        const a = Math.random() * 2 * Math.PI;
+        x = 50 + r * Math.cos(a); y = 50 + r * Math.sin(a);
+      }
+      pts.push({ x, y, c });
+    }
+    return pts;
+  }
+
+  /* ── 2~3. 거리를 재고 k명에게 묻는다 ──
+     전체를 정렬하지 않고 가까운 k개만 유지한다. 격자 8천 칸을 매번 다시 그려야 하므로
+     이 최적화가 없으면 슬라이더가 끊긴다. */
+  function classify(px, py, k) {
+    const bd = new Float64Array(k).fill(Infinity);
+    const bc = new Int8Array(k);
+    for (const t of train) {
+      const d = (t.x - px) * (t.x - px) + (t.y - py) * (t.y - py);
+      if (d < bd[k - 1]) {
+        let j = k - 1;
+        while (j > 0 && bd[j - 1] > d) { bd[j] = bd[j - 1]; bc[j] = bc[j - 1]; j--; }
+        bd[j] = d; bc[j] = t.c;
+      }
+    }
+    let s = 0;
+    for (let i = 0; i < k; i++) s += bc[i] ? 1 : -1;
+    return s > 0 ? 1 : 0;
+  }
+
+  /* ── 4. 두 번 채점 ── */
+  function accuracy(pts, k) {
+    let ok = 0;
+    for (const p of pts) if (classify(p.x, p.y, k) === p.c) ok++;
+    return (ok / pts.length) * 100;
+  }
+
+  function draw(k) {
+    const W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    const px = (v) => PAD + (v / 100) * (W - 2 * PAD);
+    const py = (v) => H - PAD - (v / 100) * (H - 2 * PAD);
+
+    // 결정 영역
+    const cw = (W - 2 * PAD) / GRID, ch = (H - 2 * PAD) / GRID;
+    for (let i = 0; i < GRID; i++) {
+      for (let j = 0; j < GRID; j++) {
+        const vx = (i + 0.5) / GRID * 100, vy = (j + 0.5) / GRID * 100;
+        ctx.fillStyle = classify(vx, vy, k) ? css("--c2-bg") : css("--c1-bg");
+        ctx.fillRect(PAD + i * cw, py(vy) - ch / 2, cw + 1, ch + 1);
+      }
+    }
+    ctx.strokeStyle = "#CFD8E0"; ctx.lineWidth = 2;
+    ctx.strokeRect(PAD, PAD, W - 2 * PAD, H - 2 * PAD);
+
+    // 검증 데이터 — 속 빈 원
+    for (const p of test) {
+      ctx.beginPath(); ctx.arc(px(p.x), py(p.y), 6, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff"; ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = p.c ? css("--c2") : css("--c1");
+      ctx.globalAlpha = 0.75; ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    // 훈련 데이터 — 채운 원
+    for (const p of train) {
+      ctx.beginPath(); ctx.arc(px(p.x), py(p.y), 7, 0, Math.PI * 2);
+      ctx.fillStyle = p.c ? css("--c2") : css("--c1"); ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
+    }
+
+    ctx.fillStyle = "#5B6875"; ctx.font = "bold 26px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("k = " + k, PAD + 14, PAD + 34);
+  }
+
+  function render() {
+    const k = +el("k").value;
+    draw(k);
+    const tr = accuracy(train, k), te = accuracy(test, k), gap = tr - te;
+    el("accTr").textContent = tr.toFixed(1) + "%";
+    el("accTe").textContent = te.toFixed(1) + "%";
+    el("gap").textContent = gap.toFixed(1) + "%p";
+    el("barTr").style.width = tr + "%";
+    el("barTe").style.width = te + "%";
+    el("barGap").style.width = Math.min(100, Math.abs(gap) * 3) + "%";
+
+    const v = el("verdict");
+    if (gap >= 12) {
+      v.className = "over";
+      v.innerHTML = "<strong>과대적합.</strong> 훈련 데이터는 " + tr.toFixed(1) +
+        "% 맞히는데 처음 보는 데이터는 " + te.toFixed(1) + "%입니다. " +
+        "경계가 점 하나하나를 따라다니느라 울퉁불퉁해졌습니다.";
+    } else if (te < 65) {
+      v.className = "under";
+      v.innerHTML = "<strong>과소적합.</strong> 둘 다 낮습니다. 이웃을 너무 많이 부르는 바람에 " +
+        "멀리 있는 점까지 투표에 끼어들어, 데이터의 모양 자체를 놓쳤습니다.";
+    } else {
+      v.className = "good";
+      v.innerHTML = "<strong>균형이 맞습니다.</strong> 검증 정확도 " + te.toFixed(1) +
+        "%, 격차 " + gap.toFixed(1) + "%p. 이 근처의 k를 쓰면 됩니다.";
+    }
+  }
+
+  function regen() {
+    const n = +el("n").value, shape = el("shape").value, ov = +el("ov").value;
+    train = makeData(n, shape, ov);
+    test = makeData(Math.max(60, Math.round(n * 0.8)), shape, ov);
+    el("k").max = Math.max(3, (n % 2 === 0 ? n - 1 : n));
+    render();
+  }
+
+  el("k").addEventListener("input", (e) => { el("kV").textContent = e.target.value; render(); });
+  el("ov").addEventListener("input", (e) => { el("ovV").textContent = e.target.value; regen(); });
+  el("n").addEventListener("input", (e) => { el("nV").textContent = e.target.value; regen(); });
+  el("shape").addEventListener("change", regen);
+  el("regen").addEventListener("click", regen);
+  el("k1").addEventListener("click", () => {
+    el("k").value = 1; el("kV").textContent = "1"; render();
+  });
+  el("kbest").addEventListener("click", () => {
+    let best = 1, bestAcc = -1;
+    for (let k = 1; k <= Math.min(81, +el("k").max); k += 2) {
+      const a = accuracy(test, k);
+      if (a > bestAcc) { bestAcc = a; best = k; }
+    }
+    el("k").value = best; el("kV").textContent = String(best); render();
+  });
+
+  regen();
+})();
+</script>
+</body>
+</html>
